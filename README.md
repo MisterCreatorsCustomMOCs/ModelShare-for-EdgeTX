@@ -1,8 +1,17 @@
+![Model Share](images/banner.png)
+
 # Model Share
 
 **Author:** MisterCreators Custom MOCs
 
 A tool script that copies a model, a single file or a whole folder from one EdgeTX radio to another. Both radios run the tool: one sends, one receives. A received model arrives as a new model and is ready to use on the second radio.
+
+<p>
+  <img src="images/send_running.png" alt="Sending radio" width="49%">
+  <img src="images/receive_running.png" alt="Receiving radio" width="49%">
+</p>
+
+*Left: the sending radio. Right: the receiving radio collecting the model over the trainer cable. Screenshots rendered from the Model Share code with two simulated radios.*
 
 Two ways to connect the radios:
 
@@ -29,6 +38,8 @@ Model Share needs a radio with a colour screen. EdgeTX 2.10 or newer is recommen
 2. Set **Model Setup → Trainer → Mode** to **Slave/Jack**. Leave the other trainer settings at their defaults.
 3. The first time you send from this model, Model Share asks for its mixes. Tap **Add mixes**. This adds mixes CH1–CH8 = GV1–GV8 that replace those channels. That's why this has to be a separate model.
 
+![Model Share asks to add its mixes](images/send_add_mixes.png)
+
 **Receiving radio:** create a model for receiving, for example "Share RX", with **Model Setup → Trainer → Mode** set to **Master/Jack**. Internal RF Off is recommended here too.
 
 To send in the other direction, select the other share model on each radio. With "Share TX" and "Share RX" on both radios, you only switch models, never settings.
@@ -38,7 +49,16 @@ To send in the other direction, select the other share model on each radio. With
 1. Connect the trainer jacks of both radios with the 3.5 mm cable.
 2. **Receiving radio:** select the Master model, open Model Share, tap **Receive**.
 3. **Sending radio:** select the Slave model, open Model Share, tap **Send model** or **Send files / folder** and choose what to send.
+
+<p>
+  <img src="images/send_model_list.png" alt="Send model list" width="49%">
+  <img src="images/send_files.png" alt="Send files browser" width="49%">
+</p>
+
+*Left: Send model lists the models by name. Right: Send files / folder browses the SD card (RADIO/ is grayed out, it is never sent).*
 4. The sender repeats everything in rounds. The receiver collects the pieces, checks them, and shows **"Receive complete"** when everything has arrived.
+
+![Receive complete](images/receive_complete.png)
 5. Stop the sender with **X**.
 6. **Restart the receiving radio** to see a received model in the model list.
 
@@ -67,6 +87,14 @@ Tap **Connection test**, then **Send test signal** on the sending radio and **Re
 - the largest value error
 - a verdict: **Link OK at this speed**, **Symbols are missed: try a slower speed**, or **Values arrive too imprecise**
 
+<p>
+  <img src="images/test_menu.png" alt="Connection test menu" width="32%">
+  <img src="images/test_sender.png" alt="Sending the test signal" width="32%">
+  <img src="images/test_receiver.png" alt="Test result on the receiving radio" width="32%">
+</p>
+
+*Connection test: choose the side, the sender sends the test signal, the receiver shows the result.*
+
 ### Safety
 
 - Model Share **refuses to send while an RF module is on**, and offers no mixes then. The data would otherwise go out over the air as wild stick movements.
@@ -90,6 +118,13 @@ Notes:
 
 Switch the main menu entry **Connection** to **Serial**. Data flows both ways, and every packet is confirmed by the other radio and sent again if needed.
 
+<p>
+  <img src="images/serial_menu.png" alt="Main menu with serial connection" width="49%">
+  <img src="images/serial_test.png" alt="Serial connection test" width="49%">
+</p>
+
+*Left: with Serial, the title bar shows Online and the bottom line the LUA port. Right: the serial connection test.*
+
 ## Main menu
 
 | Entry | What it does |
@@ -101,6 +136,13 @@ Switch the main menu entry **Connection** to **Serial**. Data flows both ways, a
 | **Overwrite existing files** | Receiving radio: if **Yes**, received files replace files with the same name. If **No**, those files are skipped. Models are always saved as new models. |
 | **Connection** | Switches between **Trainer cable** and **Serial**. |
 | **Speed** | Trainer cable, sending radio: see [Speed](#speed). |
+
+<p>
+  <img src="images/menu_sender.png" alt="Main menu on the sending radio" width="49%">
+  <img src="images/menu_receiver.png" alt="Main menu on the receiving radio" width="49%">
+</p>
+
+*Left: Slave model, Receive is grayed out. Right: Master model, the send entries are grayed out.*
 
 With the trainer cable, Model Share reads the trainer mode of the active model and grays out what this radio can't do:
 
