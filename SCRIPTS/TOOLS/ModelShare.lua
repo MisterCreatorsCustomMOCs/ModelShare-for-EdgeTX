@@ -13,8 +13,8 @@
 -- Serial: both radios need a serial port set to "LUA" (SYS -> Hardware -> Serial ports),
 --   wired TX -> RX, RX -> TX, GND -> GND, same baud rate on both sides.
 --
--- Touch:  tap a list entry to open / send it, "Up" / "Dn" scroll, "X" = back
--- Keys:   PREV / NEXT select, ENTER = open / send, EXIT / RTN = back
+-- Touch:  tap a list entry to open / send it, swipe or "Up" / "Dn" to scroll, "X" = back
+-- Keys:   PREV / NEXT select (hold to repeat), PAGE scrolls, ENTER = open / send, EXIT / RTN = back
 
 local PROTO     = "MS1" -- protocol id, must match on both radios
 local CHUNK     = 64    -- payload bytes per data packet
@@ -55,10 +55,27 @@ local BAR_H  = 44 -- title bar and bottom bar height
 local ROW_H  = 32 -- list row, rows with a description line are ROW_DESC high
 local ROW_DESC = 46
 local LIST_Y = BAR_H + 4
+local DRAG   = 12 -- finger movement in pixels that turns a touch into a scroll
+
+-- key events, the radio decides which of them exist
+local function keySet(...)
+  local s = {}
+  for i = 1, select("#", ...) do
+    local e = select(i, ...)
+    if e then s[e] = true end
+  end
+  return s
+end
+local KEY_NEXT = keySet(EVT_VIRTUAL_NEXT, EVT_VIRTUAL_NEXT_REPT)
+local KEY_PREV = keySet(EVT_VIRTUAL_PREV, EVT_VIRTUAL_PREV_REPT)
+local KEY_PGDN = keySet(EVT_VIRTUAL_NEXT_PAGE)
+local KEY_PGUP = keySet(EVT_VIRTUAL_PREV_PAGE)
 
 local state = "menu"
 local overwrite = false
 local listSel, listTop = 1, 1
+local followSel = true -- false after a swipe: the list stays where the finger left it
+local touch            -- current touch: start y, list position, scrolling, end time
 local rowH = ROW_DESC
 local regions, lastRegions = {}, {}
 
@@ -322,7 +339,7 @@ end
 
 local function show(s)
   state = s
-  listSel, listTop = 1, 1
+  listSel, listTop, followSel = 1, 1, true
   rowH = (s == "menu" or s == "ttest") and ROW_DESC or ROW_H
   if s == "menu" then
     checkPorts()
@@ -1161,6 +1178,44 @@ local function hitTest(x, y)
   end
 end
 
+-- Turns touch events into the id of the tapped region.
+-- EdgeTX ends a touch with TAP, BREAK or both, and drops events when several arrive
+-- within one script cycle, so a touch counts on whichever end event comes first.
+-- The region under the first contact counts: the position of the end event is not
+-- reliable on every radio. A touch that moved more than DRAG pixels scrolls instead.
+local function touchInput(event, st)
+  local now = getTime()
+  if event == EVT_TOUCH_FIRST then
+    touch = { y0 = st.y, top = listTop, id = hitTest(st.x, st.y) }
+    -- highlight the row right away, so the finger gets feedback
+    if type(touch.id) == "number" then listSel = touch.id end
+  elseif event == EVT_TOUCH_SLIDE then
+    if not touch or touch.done then
+      touch = { y0 = st.startY or st.y, top = listTop, id = st.startX and hitTest(st.startX, st.startY) }
+    end
+    local dy = st.y - touch.y0
+    if math.abs(dy) > DRAG then touch.scroll = true end
+    if touch.scroll then
+      listTop = touch.top - math.floor(dy / rowH + 0.5) -- clamped when drawn
+      followSel = false
+    end
+  elseif event == EVT_TOUCH_TAP or event == EVT_TOUCH_BREAK then
+    if touch and touch.done then
+      -- second end event of a touch that is handled already
+      if now - touch.done < 30 then return end
+      touch = nil
+    end
+    local id
+    if touch then
+      if not touch.scroll then id = touch.id end
+    elseif event == EVT_TOUCH_TAP and st.x then
+      id = hitTest(st.x, st.y) -- the start of this touch was dropped
+    end
+    touch = { done = now }
+    return id
+  end
+end
+
 local function drawButton(id, x, y, w, h, text, col)
   lcd.drawFilledRectangle(x, y, w, h, col or COL_BTN)
   lcd.drawText(x + math.floor(w / 2), y + math.floor(h / 2) - 10, text, CENTER + COL_TEXT)
@@ -1210,8 +1265,11 @@ end
 -- items: label, optional sub (right, dim), desc (second line, small), dim
 local function drawList(items, footer, footerCol)
   local rows = listRows()
-  if listSel < listTop then listTop = listSel end
-  if listSel >= listTop + rows then listTop = listSel - rows + 1 end
+  if followSel then
+    if listSel < listTop then listTop = listSel end
+    if listSel >= listTop + rows then listTop = listSel - rows + 1 end
+  end
+  listTop = math.max(1, math.min(listTop, #items - rows + 1))
   for i = 0, rows - 1 do
     local idx = listTop + i
     local it = items[idx]
@@ -1223,6 +1281,14 @@ local function drawList(items, footer, footerCol)
     if it.sub then lcd.drawText(LCD_W - 12, ty, it.sub, RIGHT + COL_DIM) end
     if it.desc then lcd.drawText(12, y + 24, it.desc, SMLSIZE + COL_DIM) end
     region(idx, 0, y, LCD_W, rowH)
+  end
+  -- scroll bar on the right edge
+  if #items > rows then
+    local h = rows * rowH
+    local th = math.max(16, math.floor(h * rows / #items))
+    local ty = LIST_Y + math.floor((h - th) * (listTop - 1) / (#items - rows))
+    lcd.drawFilledRectangle(LCD_W - 5, LIST_Y, 4, h, COL_BAR)
+    lcd.drawFilledRectangle(LCD_W - 5, ty, 4, th, COL_DIM)
   end
   local by = LCD_H - BAR_H
   lcd.drawFilledRectangle(0, by, LCD_W, BAR_H, COL_BAR)
@@ -1237,11 +1303,21 @@ end
 local function listInput(event, tap, n)
   if n == 0 then return end
   local rows = listRows()
-  if event == EVT_VIRTUAL_NEXT then listSel = listSel % n + 1
-  elseif event == EVT_VIRTUAL_PREV then listSel = (listSel - 2) % n + 1
+  local step = (KEY_NEXT[event] and 1) or (KEY_PREV[event] and -1)
+    or (KEY_PGDN[event] and rows) or (KEY_PGUP[event] and -rows)
+  if step then
+    if not followSel and (listSel < listTop or listSel >= listTop + rows) then
+      listSel = listTop -- selection was swiped out of view: continue from the top row shown
+    elseif step == 1 or step == -1 then
+      listSel = (listSel - 1 + step) % n + 1
+    else
+      listSel = math.max(1, math.min(n, listSel + step))
+    end
+    followSel = true
   elseif event == EVT_VIRTUAL_ENTER then return listSel
-  elseif tap == "up" then listSel = math.max(1, listSel - rows); listTop = math.max(1, listTop - rows)
-  elseif tap == "down" then listSel = math.min(n, listSel + rows); listTop = math.min(math.max(1, n - rows + 1), listTop + rows)
+  elseif tap == "up" or tap == "down" then
+    listTop = math.max(1, math.min(n - rows + 1, listTop + (tap == "up" and -rows or rows)))
+    listSel, followSel = listTop, true
   elseif type(tap) == "number" and tap <= n then listSel = tap; return tap
   end
 end
@@ -1685,7 +1761,7 @@ local function run(event, touchState)
   end
 
   local tap
-  if event == EVT_TOUCH_TAP and touchState then tap = hitTest(touchState.x, touchState.y) end
+  if touchState then tap = touchInput(event, touchState) end
   if event == EVT_VIRTUAL_EXIT or (EVT_EXIT_BREAK and event == EVT_EXIT_BREAK) or tap == "back" then
     if back() then return 1 end
     event, tap = 0, nil
